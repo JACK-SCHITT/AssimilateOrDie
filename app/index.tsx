@@ -1,16 +1,19 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing } from '@/constants/theme';
+import { useRef } from 'react';
+import { useAuth } from '@/template';
 
 const { width, height } = Dimensions.get('window');
 
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user, loading } = useAuth();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
@@ -28,6 +31,20 @@ export default function OnboardingScreen() {
       ])
     ).start();
   }, []);
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/(tabs)');
+    }
+  }, [user, loading]);
+
+  const handleEnter = () => {
+    if (user) {
+      router.replace('/(tabs)');
+    } else {
+      router.push('/login');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -60,7 +77,7 @@ export default function OnboardingScreen() {
 
         <Pressable
           style={({ pressed }) => [styles.ctaButton, pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] }]}
-          onPress={() => router.replace('/(tabs)')}
+          onPress={handleEnter}
         >
           <LinearGradient
             colors={[Colors.crimson, Colors.bloodRed]}

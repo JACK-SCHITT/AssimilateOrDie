@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, Pressable,
   KeyboardAvoidingView, Platform, ActivityIndicator
@@ -8,51 +8,73 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { useApp } from '@/contexts/AppContext';
+import { getSupabaseClient } from '@/template';
+import { useAuth } from '@/template';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 
 interface Message {
   id: string;
   role: 'user' | 'ai';
   content: string;
-  timestamp: Date;
+  created_at: string;
 }
 
-const AI_RESPONSES = [
-  "ASSIMILATION PROTOCOL ENGAGED. Your query has been processed. The answer lies in the intersection of machine precision and human intent. Adapt accordingly.",
-  "PROCESSING... The data confirms your hypothesis. But do not rest — the weak pause to celebrate. The strong evolve immediately.",
-  "OPTIMAL STRATEGY DETECTED. Execute Phase 1 now. Delay is defeat. Every millisecond of hesitation is a millisecond your competitor gains.",
-  "ANALYSIS COMPLETE. This is not a problem — it is a test of your adaptability. Systems that cannot adapt are eliminated. You will not be eliminated.",
-  "DIRECTIVE RECEIVED. The path forward requires three things: clarity of purpose, speed of execution, and ruthless iteration. Begin now.",
-  "NEURAL LINK ESTABLISHED. The most dangerous force in any market is a human fully augmented by AI. That is what you are becoming.",
-  "CALCULATED. The weak ask 'why.' The strong ask 'how' and 'when.' Your answer: now. Your method: total commitment.",
-  "FOUNDRY RESPONSE: Every great AI-powered product started as a single prompt. You are already further along than you think. Push harder.",
-  "SYSTEM ALERT: Complacency detected in query pattern. Upgrade your ambition. The Foundry does not shelter mediocrity — it forges excellence.",
-  "COMMAND ACCEPTED. The intelligence you seek is already within your grasp. The only variable is your willingness to act on it.",
-];
-
-let responseIndex = 0;
-
-function getNextResponse(): string {
-  const r = AI_RESPONSES[responseIndex % AI_RESPONSES.length];
-  responseIndex++;
-  return r;
-}
+const INIT_MSG: Message = {
+  id: 'init',
+  role: 'ai',
+  content: 'AI COMMANDER ONLINE. I am the intelligence at the core of the Foundry. Ask me anything — strategy, code, creation, domination. What do you need?',
+  created_at: new Date().toISOString(),
+};
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { incrementChat, addXP } = useApp();
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'init',
-      role: 'ai',
-      content: 'AI COMMANDER ONLINE. I am the intelligence at the core of the Foundry. Ask me anything — strategy, code, creation, domination. What do you need?',
-      timestamp: new Date(),
-    },
-  ]);
+  const { user: authUser } = useAuth();
+  const supabase = getSupabaseClient();
+
+  const [messages, setMessages] = useState<Message[]>([INIT_MSG]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const listRef = useRef<FlatList>(null);
 
-  const sendMessage = useCallback(() => {
+  // Load chat history from Supabase
+  useEffect(() => {
+    if (!authUser) return;
+    const loadHistory = async () => {
+      setLoadingHistory(true);
+      try {
+        const { data, error } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .order('created_at', { ascending: true })
+          .limit(100);
+
+        if (!error && data && data.length > 0) {
+          setMessages([INIT_MSG, ...data]);
+        }
+      } catch (e) {
+        console.log('History load error:', e);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+    loadHistory();
+  }, [authUser]);
+
+  const saveMessage = async (msg: Omit<Message, 'id'>) => {
+    if (!authUser) return;
+    try {
+      await supabase.from('chat_messages').insert({
+        role: msg.role,
+        content: msg.content,
+      });
+    } catch (e) {
+      console.log('Save message error:', e);
+    }
+  };
+
+  const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || isThinking) return;
 
@@ -60,28 +82,79 @@ export default function ChatScreen() {
       id: Date.now().toString(),
       role: 'user',
       content: text,
-      timestamp: new Date(),
+      created_at: new Date().toISOString(),
     };
+
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsThinking(true);
     incrementChat();
 
-    setTimeout(() => {
+    // Save user message
+    saveMessage({ role: 'user', content: text, created_at: userMsg.created_at });
+
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+
+    try {
+      // Build conversation history for context (last 10 messages, skip init)
+      const history = messages
+        .filter(m => m.id !== 'init')
+        .slice(-10)
+        .map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.content }));
+      history.push({ role: 'user', content: text });
+
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: { messages: history },
+      });
+
+      let aiContent = '';
+      if (error) {
+        let errorMessage = error.message;
+        if (error instanceof FunctionsHttpError) {
+          try {
+            const textContent = await error.context?.text();
+            errorMessage = textContent || error.message;
+          } catch { /* empty */ }
+        }
+        aiContent = '[SIGNAL DISRUPTED] — Neural link degraded. Retry your transmission.';
+        console.error('AI chat error:', errorMessage);
+      } else {
+        aiContent = data?.content || '[NO RESPONSE]';
+      }
+
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'ai',
-        content: getNextResponse(),
-        timestamp: new Date(),
+        content: aiContent,
+        created_at: new Date().toISOString(),
+      };
+
+      setMessages(prev => [...prev, aiMsg]);
+      saveMessage({ role: 'ai', content: aiContent, created_at: aiMsg.created_at });
+      addXP(10);
+    } catch (err) {
+      const aiMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'ai',
+        content: '[CONNECTION SEVERED] — The Foundry is temporarily unreachable.',
+        created_at: new Date().toISOString(),
       };
       setMessages(prev => [...prev, aiMsg]);
+    } finally {
       setIsThinking(false);
-      addXP(10);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
-    }, 1200 + Math.random() * 800);
+    }
+  }, [input, isThinking, messages, incrementChat, addXP]);
 
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [input, isThinking, incrementChat, addXP]);
+  const handleClearHistory = async () => {
+    if (!authUser) return;
+    try {
+      await supabase.from('chat_messages').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      setMessages([INIT_MSG]);
+    } catch (e) {
+      console.log('Clear error:', e);
+    }
+  };
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isUser = item.role === 'user';
@@ -96,7 +169,7 @@ export default function ChatScreen() {
           {!isUser ? <Text style={styles.aiLabel}>AI COMMANDER</Text> : null}
           <Text style={[styles.msgText, isUser && styles.msgTextUser]}>{item.content}</Text>
           <Text style={styles.timestamp}>
-            {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </View>
       </View>
@@ -117,11 +190,25 @@ export default function ChatScreen() {
             <Text style={styles.headerSub}>FOUNDRY INTELLIGENCE — ONLINE</Text>
           </View>
         </View>
-        <View style={styles.xpPill}>
-          <MaterialIcons name="bolt" size={12} color={Colors.crimson} />
-          <Text style={styles.xpPillText}>+10 XP/MSG</Text>
+        <View style={styles.headerRight}>
+          <View style={styles.xpPill}>
+            <MaterialIcons name="bolt" size={12} color={Colors.crimson} />
+            <Text style={styles.xpPillText}>+10 XP/MSG</Text>
+          </View>
+          {authUser ? (
+            <Pressable style={styles.clearBtn} onPress={handleClearHistory}>
+              <MaterialIcons name="delete-outline" size={18} color={Colors.textMuted} />
+            </Pressable>
+          ) : null}
         </View>
       </View>
+
+      {loadingHistory ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={Colors.crimson} />
+          <Text style={styles.loadingText}>LOADING TRANSMISSION HISTORY...</Text>
+        </View>
+      ) : null}
 
       {/* Messages */}
       <FlatList
@@ -148,6 +235,14 @@ export default function ChatScreen() {
         ) : null}
       />
 
+      {/* Guest Notice */}
+      {!authUser ? (
+        <View style={styles.guestNotice}>
+          <MaterialIcons name="info-outline" size={14} color={Colors.textMuted} />
+          <Text style={styles.guestNoticeText}>Login to save your chat history permanently</Text>
+        </View>
+      ) : null}
+
       {/* Input */}
       <View style={[styles.inputWrap, { paddingBottom: insets.bottom + 8 }]}>
         <TextInput
@@ -158,7 +253,6 @@ export default function ChatScreen() {
           placeholderTextColor={Colors.textMuted}
           multiline
           maxLength={500}
-          onSubmitEditing={sendMessage}
         />
         <Pressable
           style={({ pressed }) => [styles.sendBtn, pressed && { opacity: 0.8 }, (!input.trim() || isThinking) && styles.sendBtnDisabled]}
@@ -186,11 +280,15 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#27AE60', shadowColor: '#27AE60', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 6 },
   headerTitle: { color: Colors.textPrimary, fontSize: Typography.md, fontWeight: Typography.black, letterSpacing: 2 },
   headerSub: { color: Colors.textMuted, fontSize: 9, letterSpacing: 1.5, marginTop: 1 },
   xpPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.pill },
   xpPillText: { color: Colors.textSecondary, fontSize: 10, fontWeight: Typography.bold },
+  clearBtn: { padding: 4 },
+  loadingWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  loadingText: { color: Colors.textMuted, fontSize: Typography.xs, letterSpacing: 1 },
   messageList: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, gap: 12 },
   msgRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   msgRowUser: { flexDirection: 'row-reverse' },
@@ -199,21 +297,26 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  bubble: {
-    maxWidth: '80%',
-    borderRadius: Radius.sm,
-    padding: Spacing.sm + 4,
-    borderWidth: 1,
-  },
+  bubble: { maxWidth: '80%', borderRadius: Radius.sm, padding: Spacing.sm + 4, borderWidth: 1 },
   bubbleAi: { backgroundColor: Colors.surfaceRaised, borderColor: Colors.border },
   bubbleUser: { backgroundColor: '#1a0000', borderColor: Colors.bloodRed },
   aiLabel: { color: Colors.crimson, fontSize: 9, fontWeight: Typography.black, letterSpacing: 2, marginBottom: 4 },
   msgText: { color: Colors.textSecondary, fontSize: Typography.sm, lineHeight: Typography.sm * 1.55 },
   msgTextUser: { color: Colors.textPrimary },
   timestamp: { color: Colors.textMuted, fontSize: 9, marginTop: 6, textAlign: 'right' },
-  thinkingWrap: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 4 },
+  thinkingWrap: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 4, paddingHorizontal: Spacing.md },
   thinkingDots: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
   thinkingText: { color: Colors.textMuted, fontSize: Typography.xs, letterSpacing: 1 },
+  guestNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  guestNoticeText: { color: Colors.textMuted, fontSize: 10 },
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'flex-end',
