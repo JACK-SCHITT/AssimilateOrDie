@@ -15,6 +15,7 @@ export default function RootLayout() {
               <Stack.Screen name="profile-setup" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="tool/[id]" options={{ headerShown: false, animation: 'slide_from_right' }} />
+              <Stack.Screen name="prime-directive" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             </Stack>
           </AppProvider>
         </AuthProvider>

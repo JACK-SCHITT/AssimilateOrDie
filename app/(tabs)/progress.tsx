@@ -1,8 +1,9 @@
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { RANKS } from '@/constants/data';
 import { useApp } from '@/contexts/AppContext';
@@ -12,6 +13,7 @@ export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
   const { user, currentRank, nextRank, xpProgress, addXP, completeMission } = useApp();
   const { showAlert } = useAlert();
+  const router = useRouter();
 
   const clampedProgress = Math.min(1, Math.max(0, xpProgress));
 
@@ -157,6 +159,21 @@ export default function ProgressScreen() {
           </View>
         ))}
 
+        {/* Prime Directive Access */}
+        <Pressable
+          style={({ pressed }) => [styles.primeDirectiveBtn, pressed && { opacity: 0.85 }]}
+          onPress={() => router.push('/prime-directive')}
+        >
+          <LinearGradient colors={['#1a0000', '#0d0d0d']} style={styles.primeDirectiveBtnInner}>
+            <MaterialIcons name="shield" size={20} color={Colors.crimson} />
+            <View style={styles.primeDirectiveBtnText}>
+              <Text style={styles.primeDirectiveTitle}>PRIME DIRECTIVE</Text>
+              <Text style={styles.primeDirectiveSub}>Architect Lore · Command Hierarchy · Access Protocol</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color={Colors.textMuted} />
+          </LinearGradient>
+        </Pressable>
+
         <View style={{ height: 100 }} />
       </ScrollView>
     </View>
@@ -224,4 +241,9 @@ const styles = StyleSheet.create({
   claimBtnText: { color: Colors.crimson, fontSize: 9, fontWeight: Typography.black, letterSpacing: 1.5 },
   claimedBadge: { borderWidth: 1, borderColor: Colors.success, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 2 },
   claimedText: { color: Colors.success, fontSize: 9, fontWeight: Typography.black, letterSpacing: 1.5 },
+  primeDirectiveBtn: { borderRadius: Radius.sm, overflow: 'hidden', borderWidth: 1, borderColor: Colors.borderGlow, marginBottom: Spacing.lg },
+  primeDirectiveBtnInner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.md },
+  primeDirectiveBtnText: { flex: 1 },
+  primeDirectiveTitle: { color: Colors.crimson, fontSize: Typography.sm, fontWeight: Typography.black, letterSpacing: 2 },
+  primeDirectiveSub: { color: Colors.textMuted, fontSize: Typography.xs, marginTop: 2 },
 });
