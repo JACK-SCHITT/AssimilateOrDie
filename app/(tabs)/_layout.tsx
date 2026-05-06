@@ -1,10 +1,10 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform, View, Text, StyleSheet } from 'react-native';
-import { Colors, Typography } from '@/constants/theme';
+import { Platform, View, StyleSheet } from 'react-native';
+import { Colors } from '@/constants/theme';
 
-function TabIcon({ name, color, label }: { name: any; color: string; label: string }) {
+function TabIcon({ name, color }: { name: any; color: string }) {
   return (
     <View style={styles.iconWrap}>
       <MaterialIcons name={name} size={22} color={color} />
@@ -31,9 +31,9 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors.crimson,
         tabBarInactiveTintColor: '#444',
         tabBarLabelStyle: {
-          fontSize: 9,
+          fontSize: 8,
           fontWeight: '700',
-          letterSpacing: 1.2,
+          letterSpacing: 1,
           marginTop: 2,
         },
       }}
@@ -42,35 +42,42 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'FOUNDRY',
-          tabBarIcon: ({ color }) => <TabIcon name="bolt" color={color} label="FOUNDRY" />,
+          tabBarIcon: ({ color }) => <TabIcon name="bolt" color={color} />,
         }}
       />
       <Tabs.Screen
         name="chat"
         options={{
           title: 'COMMAND',
-          tabBarIcon: ({ color }) => <TabIcon name="psychology" color={color} label="COMMAND" />,
+          tabBarIcon: ({ color }) => <TabIcon name="psychology" color={color} />,
         }}
       />
       <Tabs.Screen
         name="build"
         options={{
           title: 'BUILD',
-          tabBarIcon: ({ color }) => <TabIcon name="construction" color={color} label="BUILD" />,
+          tabBarIcon: ({ color }) => <TabIcon name="construction" color={color} />,
         }}
       />
       <Tabs.Screen
         name="submit"
         options={{
           title: 'SUBMIT',
-          tabBarIcon: ({ color }) => <TabIcon name="rocket_launch" color={color} label="SUBMIT" />,
+          tabBarIcon: ({ color }) => <TabIcon name="rocket-launch" color={color} />,
         }}
       />
       <Tabs.Screen
         name="progress"
         options={{
           title: 'RANK',
-          tabBarIcon: ({ color }) => <TabIcon name="military_tech" color={color} label="RANK" />,
+          tabBarIcon: ({ color }) => <TabIcon name="military-tech" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'PROFILE',
+          tabBarIcon: ({ color }) => <TabIcon name="person" color={color} />,
         }}
       />
     </Tabs>
